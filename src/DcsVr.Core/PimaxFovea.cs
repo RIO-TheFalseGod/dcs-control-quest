@@ -151,7 +151,7 @@ public static class PimaxFovea
     public const string Explanation = "Pimax Play's runtime renders the focus as the view minus what each slider leaves outside it: Quick, 100% − Horizontal or Vertical FOV per axis; Fine, 100% − Left → Center − Right → Center (and Top/Bottom). Center Resolution 125% is a 1.125× pixel density in Pimax's runtime log; the periphery factor is used as stored (Peripheral Resolution 20% is 0.1919). Verified against the focus resolutions Pimax logs (Quick 33% → 4088×4038, Fine 33/10 · 33/33 → 3478×2048 per eye at 5424×5356).";
 
     public static bool UsesPimaxPlay(VrProfile profile) =>
-        profile.FoveaSource == FoveaSource.PimaxPlay && profile.QuadViews == QuadProvider.QuadViewsFoveated && string.IsNullOrWhiteSpace(profile.QuadViewsLayerDirectory);
+        profile.Runtime != RuntimeKind.Vdxr && profile.FoveaSource == FoveaSource.PimaxPlay && profile.QuadViews == QuadProvider.QuadViewsFoveated && string.IsNullOrWhiteSpace(profile.QuadViewsLayerDirectory);
 
     public static PimaxQuadViewsSettings? Read(string? path = null)
     {

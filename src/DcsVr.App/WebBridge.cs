@@ -13,7 +13,7 @@ internal sealed class WebBridge(ControlService service, Window? owner = null,
 {
     private readonly SemaphoreSlim _commands = new(1);
     private InventorySnapshot _inventory = new();
-    private VrProfile _profile = new();
+    private VrProfile _profile = offline ? new() : OpenXrRoutes.Quest3;
     private bool _shownApplied;
     /// <summary>On opening, the editor shows the profile that is applied (its saved profile.json), not a preset, so the
     /// settings on screen are the ones DCS will launch with.</summary>
@@ -520,7 +520,7 @@ internal sealed class WebBridge(ControlService service, Window? owner = null,
         var activeRoute = ActiveRoute();
         var issues = ProfileValidation.Validate(service.ResolveNeuralRuntime(_profile), CurrentInventory).ToList();
         if (!_profile.Desktop && activeRoute.Route is { } running && running != _profile.Runtime)
-            issues.Insert(0, new("route-mismatch", IssueSeverity.Warning, activeRoute.Summary + " This profile uses " + (_profile.Runtime == RuntimeKind.Pimax ? "the Pimax runtime" : "Sboys through SteamVR") + ". Switch the route or use Detect my setup before applying."));
+            issues.Insert(0, new("route-mismatch", IssueSeverity.Warning, activeRoute.Summary + " This profile uses " + OpenXrRoutes.Name(_profile.Runtime) + ". Switch the route or use Detect my setup before applying."));
         if (FoveaFact(_profile) is { } fact) issues.Add(fact);
         var launcherBlocked = LaunchSafety.LauncherRestartBlocked;
         if (_profile.KeepDcsLauncher && launcherBlocked) issues.Insert(0, new("dcs-launcher", IssueSeverity.Error, LaunchSafety.LauncherBlockedMessage));

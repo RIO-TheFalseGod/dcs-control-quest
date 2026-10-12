@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace DcsVr.Core;
 
-public enum RuntimeKind { Pimax, SboysSteamVr }
+public enum RuntimeKind { Pimax, SboysSteamVr, Vdxr }
 public enum QuadProvider { None, PimaxNative, QuadViewsFoveated }
 public enum FrameGeneration { Off, Nvidia, FidelityFx }
 public enum GazeMode { Fixed, EyeTracked }
@@ -340,6 +340,7 @@ public sealed record InventorySnapshot
     public string? ActiveRuntime { get; init; }
     public string? PimaxRuntime { get; init; }
     public string? SteamVrRuntime { get; init; }
+    public string? VdxrRuntime { get; init; }
     public string? PimaxVersion { get; init; }
     public string? SboysDirectory { get; init; }
     public string? SboysConfigPath { get; init; }
@@ -437,6 +438,7 @@ public static class ProfilePresets
         new() { Id = "pimax-neural", Name = "Pimax · DLSS 5 + framegen (no Quad Views)", QuadViews = QuadProvider.None, FrameGen = FrameGeneration.Nvidia, FoveatedDlss = true, NeuralRendering = true },
         new() { Id = "sboys-neural", Name = "Sboys · DLSS 5 + framegen (no Quad Views)", Runtime = RuntimeKind.SboysSteamVr, QuadViews = QuadProvider.None, FrameGen = FrameGeneration.Nvidia, FoveatedDlss = true, NeuralRendering = true },
         new() { Id = "pimax-combined", Name = "Pimax · DLSS 5 + framegen + Quad Views", QuadViews = QuadProvider.QuadViewsFoveated, QuadFocusAdapter = true, FrameGen = FrameGeneration.Nvidia, NeuralRendering = true },
-        new() { Id = "sboys-combined", Name = "Sboys · DLSS 5 + framegen + Quad Views", Runtime = RuntimeKind.SboysSteamVr, QuadViews = QuadProvider.QuadViewsFoveated, QuadFocusAdapter = true, FrameGen = FrameGeneration.Nvidia, NeuralRendering = true }
+        new() { Id = "sboys-combined", Name = "Sboys · DLSS 5 + framegen + Quad Views", Runtime = RuntimeKind.SboysSteamVr, QuadViews = QuadProvider.QuadViewsFoveated, QuadFocusAdapter = true, FrameGen = FrameGeneration.Nvidia, NeuralRendering = true },
+        OpenXrRoutes.Quest3
     ];
 }

@@ -39,6 +39,22 @@ public sealed class WindowsInventory
         return standard;
     }
 
+    public static string? VdxrRuntimeManifest(string? activeRuntime, IEnumerable<string>? registered = null, string? programFiles = null)
+    {
+        var standard = Path.Combine(programFiles ?? Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"Virtual Desktop Streamer\OpenXR\virtualdesktop-openxr.json");
+        return new[] { activeRuntime, standard }.Concat(registered ?? []).FirstOrDefault(p => OpenXrRoutes.IsVdxrManifest(p) && File.Exists(p));
+    }
+
+    private static IEnumerable<string> RegisteredRuntimes()
+    {
+        try
+        {
+            using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Khronos\OpenXR\1\AvailableRuntimes");
+            return key?.GetValueNames() ?? [];
+        }
+        catch (Exception e) when (e is System.Security.SecurityException or UnauthorizedAccessException or IOException) { return []; }
+    }
+
     public InventorySnapshot Capture(string? executableOverride = null, string? optionsOverride = null)
     {
         var observations = new List<string>();
@@ -126,6 +142,7 @@ public sealed class WindowsInventory
         {
             DcsDirectory = dcsDirectory, DcsExecutable = executable, OptionsPath = options,
             ActiveRuntime = activeRuntime, PimaxRuntime = File.Exists(pimaxManifest) ? pimaxManifest : null,
+            VdxrRuntime = VdxrRuntimeManifest(activeRuntime, RegisteredRuntimes()),
             SteamVrRuntime = steamManifest is not null && File.Exists(steamManifest) ? steamManifest : null,
             PimaxVersion = pimax.Version, SboysConfigPath = File.Exists(sboysConfig) ? sboysConfig : null,
             SboysDirectory = drivers.FirstOrDefault(d => d.Name.Contains("customheadset", StringComparison.OrdinalIgnoreCase))?.Directory, DcsRunning = dcsRunning,
