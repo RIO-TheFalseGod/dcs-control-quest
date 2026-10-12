@@ -32,6 +32,7 @@ public static partial class HeadsetRefresh
     /// <summary>The refresh rate of the profile's headset route, or null when it cannot be read.</summary>
     public static HeadsetRefreshFact? Detect(RuntimeKind runtime)
     {
+        if (runtime == RuntimeKind.Vdxr) return null; // Set in Virtual Desktop; never borrow another runtime's rate.
         // One answer for 3 s: a page refresh, its checks and the frame-rate summary ask several times and must agree.
         var key = runtime + "|" + PimaxRuntimeFolder + "|" + PimaxLogFolder + "|" + SteamVrSettings;
         var now = Environment.TickCount64;

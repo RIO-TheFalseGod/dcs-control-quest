@@ -116,18 +116,19 @@ const foveatedSr = p => Boolean(p.foveatedDlss) && p.quadViews === 'None';
 // The DLSS row stands for any DLSS processing: DLSS 5 neural rendering or, in stereo, Foveated Super Resolution on its own.
 const featureState = p => ({engine:Boolean(p.engineOptimizations), boost:Boolean(p.cpuBoost), quad:p.quadViews !== 'None', dlss:Boolean(p.neuralRendering || foveatedSr(p)), framegen:p.frameGen !== 'Off'});
 /** Pimax native Quad Views exists only on the Pimax route and cannot host the focus adapter DLSS 5 needs. */
-const nativeAllowed = p => p.runtime !== 'SboysSteamVr' && !p.neuralRendering;
+const nativeAllowed = p => p.runtime === 'Pimax' && !p.neuralRendering;
 /** Cheeky without Quad Views (stereo): it clamps the focus and periphery ratios to at least 0.2. */
 const stereoCheeky = p => Boolean(p.neuralRendering || p.foveatedDlss) && p.quadViews === 'None';
 const CHEEKY_MIN = .2;
 /** Settles combinations that cannot run, so a draft is always deployable as far as the features go. */
 function resolveFeatures(p) {
+  if (p.runtime === 'Vdxr') Object.assign(p,{gaze:'Fixed',pupilShift:false,foveaSource:'Profile'});
   // Optimizations only keeps the VR settings for the next VR flight; they do not run (C# VrProfile.ForLaunch).
   // Foveated Super Resolution is for stereo only (same rule as ProfileValidation.ResolveFeatures).
   if (p.quadViews !== 'None') p.foveatedDlss = false;
   const cheeky = p.neuralRendering || p.foveatedDlss;
   // Pimax native Quad Views exists only in Pimax Play, and it cannot host the focus adapter that DLSS 5 needs.
-  if (p.quadViews === 'PimaxNative' && (p.runtime === 'SboysSteamVr' || cheeky)) p.quadViews = 'QuadViewsFoveated';
+  if (p.quadViews === 'PimaxNative' && (p.runtime !== 'Pimax' || cheeky)) p.quadViews = 'QuadViewsFoveated';
   // With Quad Views, Cheeky always runs on the focus views through the adapter.
   p.quadFocusAdapter = Boolean(cheeky && p.quadViews === 'QuadViewsFoveated');
   return p;
@@ -144,24 +145,31 @@ function setFeature(p, key, on) {
 }
 /** Profile name and id follow the route and the features, e.g. "Pimax · Quad Views + DLSS 5 + Frame generation + CPU Boost". */
 function deriveIdentity(p) {
-  if (p.desktop) return {id:'desktop-optimizations',name:'Optimizations only'};  const route = p.runtime === 'SboysSteamVr' ? 'Sboys' : 'Pimax', parts = [];
+  if (p.desktop) return {id:'desktop-optimizations',name:'Optimizations only'};  const route = p.runtime === 'Vdxr' ? 'Quest 3' : p.runtime === 'SboysSteamVr' ? 'Sboys' : 'Pimax', parts = [];
   if (p.quadViews === 'PimaxNative') parts.push(['nativeqv','Pimax Quad Views']); else if (p.quadViews !== 'None') parts.push(['qv','Quad Views']);
   if (p.neuralRendering) parts.push(['dlss5','DLSS 5']); else if (foveatedSr(p)) parts.push(['fdlss','Foveated Super Resolution']);
   if (p.frameGen !== 'Off') parts.push(['fg','Frame generation']);
   if (p.cpuBoost) parts.push(['boost','CPU Boost']);
   if (p.engineOptimizations) parts.push(['opt','Engine Optimizations']);
-  return {id:route.toLowerCase()+'-'+(parts.length ? parts.map(x => x[0]).join('-') : 'original'), name:route+' · '+(parts.length ? parts.map(x => x[1]).join(' + ') : 'Original rendering')};
+  return {id:route.toLowerCase().replaceAll(' ','')+'-'+(parts.length ? parts.map(x => x[0]).join('-') : 'original'), name:route+' · '+(parts.length ? parts.map(x => x[1]).join(' + ') : 'Original rendering')};
 }
 /** A copy of a profile with the route, focus movement and features chosen (used by the checklist and guided setup). */
+function questDefaults(p) {
+  return Object.assign(p,{runtime:'Vdxr',runtimeManifestPath:null,quadViewsLayerDirectory:null,quadViews:'QuadViewsFoveated',gaze:'Fixed',tracking:'Slam',
+    foveaSource:'Profile',foveaWidth:.5,foveaHeight:.45,quadFocusScale:1.10,peripheralScale:.40,
+    headsetRefreshHz:72,refreshFromHeadset:false,frameGen:'Nvidia',frameGenFactor:2,nvidiaFlowScale:50,flowPreset:'Medium',
+    fpsLimit:'RuntimeHeadroom',renderedFpsCap:36,disableDcsVSync:true,pupilShift:false,neuralRendering:false,foveatedDlss:false});
+}
 function withFeatures(source, {route, features, gaze}) {
   const p = clone(source);
   if (route === 'Desktop') p.desktop = true;
-  else if (route) { p.desktop = false; if (route !== p.runtime) { p.runtime = route; p.runtimeManifestPath = null; } }
+  else if (route) { p.desktop = false; if (route !== p.runtime) { if (route === 'Vdxr') questDefaults(p); else { p.runtime = route; p.runtimeManifestPath = null; } } }
   if (gaze) p.gaze = gaze;
   for (const [key] of FEATURES) setFeature(p, key, Boolean(features[key]));
+  resolveFeatures(p);
   return Object.assign(p, deriveIdentity(p));
 }
-const pimaxSource = p => quad(p) && p.foveaSource === 'PimaxPlay';
+const pimaxSource = p => p.runtime !== 'Vdxr' && quad(p) && p.foveaSource === 'PimaxPlay';
 /** The focus values that reach the provider: converted from Pimax Play when the profile follows it. */
 function effectiveFovea(p) {
   const c = state?.pimax?.found ? state.pimax.converted : null;
@@ -187,6 +195,7 @@ function featureSummary(key, p) {
     if (p.quadViewsLayerDirectory) return 'Alternative provider · '+gaze;
     // In Pimax Play's units: "Pimax Quick 33% × 33% · 125% · 20%", or this profile's values in the same Quick units.
     if (pimaxSource(p)) return `Bundled · ${gaze} · ` + (state?.pimax?.found ? 'from Pimax Play\'s settings: ' + state.pimax.short : 'Pimax Play not found, profile values');
+    if (p.runtime === 'Vdxr') return `Bundled · fixed · ${num(e.w)} × ${num(e.h)} · focus ${num(e.focus)}× · periphery ${num(e.periphery)}×`;
     return `Bundled · ${gaze} · profile ${profileQuick(p)}`;
   }
   if (key === 'dlss') {
@@ -262,7 +271,7 @@ function change() {
 /** "What happens at launch" depends only on the Boost settings and the route: refreshed for those edits, not every edit. */
 function boostChanged() { if (page === 'boost') refreshBoostPlan(); }
 // Fields the checklist and the route switch can change; other fields only change through their own input.
-const FEATURE_FIELDS = ['quadViews','neuralRendering','foveatedDlss','frameGen','cpuBoost','engineOptimizations','pauseTobiiDesktop','runtimeManifestPath'];
+const FEATURE_FIELDS = ['quadViews','neuralRendering','foveatedDlss','frameGen','cpuBoost','engineOptimizations','pauseTobiiDesktop','runtimeManifestPath','gaze','pupilShift','foveaSource'];
 /** Shows profile values in the fields (all, or only `paths`), never overwriting an entry the user is correcting. */
 function showProfile(paths) {
   fields.forEach(f => { if (f.path === 'dcs' || f.path === 'options' || invalid.has(f.path) || (paths && !paths.includes(f.path))) return; setFieldValue(f, profile[f.path]); });
@@ -426,20 +435,21 @@ function buildFields() {
   field(c,'quadTurbo','Turbo mode','DCS starts the next frame while the headset still shows the previous one. Can help when the CPU limits FPS.','toggle',null,quad);
   let more = disclosure(c,'Alternative provider','Only to test another Quad Views build.');
   field(more,'quadViewsLayerDirectory','Alternative Quad Views provider','Folder of another Quad Views build. Leave empty for the bundled one, which DLSS 5 needs.','path',null,p => p.quadViews === 'QuadViewsFoveated');
-  c = card('focusControls','Focus area','Size and sharpness of the high-detail area, in Pimax Play\'s own units.');
+  c = card('focusControls','Focus area','Size and sharpness of the high-detail area. Quest uses direct ratios; Pimax uses Pimax Play units.');
   field(c,'foveaSource','Focus area source','From Pimax Play\'s settings: the Quad View values set in Pimax Play, read again at every launch, on the Pimax and the Sboys route alike; nothing is written to Pimax. This profile: set them below, in Pimax Play\'s Quick units.','select',[['PimaxPlay','From Pimax Play\'s settings'],['Profile','This profile']],quad);
   const pimaxBox = document.createElement('div'); pimaxBox.id = 'pimaxFovea'; pimaxBox.className = 'pimax-fovea'; pimaxBox.hidden = true; c.append(pimaxBox);
   // This profile's own focus with bundled Quad Views, edited like Pimax Play's Quick sliders and converted exactly as Pimax converts them.
-  const ownFocusHidden = p => p.quadViews !== 'QuadViewsFoveated' || pimaxSource(p);
+  const ownFocusHidden = p => p.runtime === 'Vdxr' || p.quadViews !== 'QuadViewsFoveated' || pimaxSource(p);
   field(c,'quadFocusScale','Center resolution','As in Pimax Play: 125% renders the focus at a 1.125× pixel density. Above 100% adds detail and GPU cost.','number',[100,200,1],quad,'%',ownFocusHidden,{prop:'quadFocusScale',get:p => whole(PIMAX.centerFromDensity(p.quadFocusScale)),set:(p,v) => p.quadFocusScale = PIMAX.densityFromCenter(v)});
   field(c,'pimaxPeripheral','Peripheral resolution','As in Pimax Play: 20% renders the periphery at 0.1919 of full resolution. Lower values save GPU outside the focus; bundled Quad Views needs at least 16%.','number',[16,100,1],quad,'%',ownFocusHidden,{prop:'peripheralScale',get:p => whole(PIMAX.peripheralPercent(p.peripheralScale)),set:(p,v) => p.peripheralScale = PIMAX.peripheryFromPercent(v)});
   field(c,'pimaxHorizontalFov','Horizontal FOV','As Pimax Play\'s Quick Horizontal FOV: the share of the view left outside the focus, so 33% renders a focus 67% of the view wide.','number',[5,90,1],quad,'%',ownFocusHidden,{prop:'foveaWidth',get:p => whole(PIMAX.quickFromShare(p.foveaWidth)),set:(p,v) => p.foveaWidth = PIMAX.shareFromQuick(v)});
   field(c,'pimaxVerticalFov','Vertical FOV','As Pimax Play\'s Quick Vertical FOV: 33% renders a focus 67% of the view tall.','number',[5,90,1],quad,'%',ownFocusHidden,{prop:'foveaHeight',get:p => whole(PIMAX.quickFromShare(p.foveaHeight)),set:(p,v) => p.foveaHeight = PIMAX.shareFromQuick(v)});
   // Stereo Cheeky (DLSS 5 or Foveated Super Resolution without Quad Views) sizes its own focus as fractions of the view.
-  const stereoHidden = p => p.quadViews !== 'None';
-  field(c,'foveaWidth','Focus width','Without Quad Views: horizontal share of the view in high detail.','number',[.1,1,.01],coverageOwned,'ratio',stereoHidden);
-  field(c,'foveaHeight','Focus height','Without Quad Views: vertical share of the view in high detail.','number',[.1,1,.01],coverageOwned,'ratio',stereoHidden);
-  field(c,'peripheralScale','Peripheral resolution','Foveated Super Resolution without Quad Views: lower values save GPU outside the focus area.','number',[.15,1,.01],foveatedSr,'ratio',stereoHidden);
+  const stereoHidden = p => p.runtime !== 'Vdxr' && p.quadViews !== 'None';
+  field(c,'questFocusScale','Focus multiplier','Pixel density of the fixed focus area.','number',[.5,2,.01],quad,'×',p => p.runtime !== 'Vdxr' || !quad(p),{prop:'quadFocusScale',get:p => p.quadFocusScale,set:(p,v) => p.quadFocusScale=v});
+  field(c,'foveaWidth','Focus width','Horizontal share of the view in high detail.','number',[.1,1,.01],coverageOwned,'ratio',stereoHidden);
+  field(c,'foveaHeight','Focus height','Vertical share of the view in high detail.','number',[.1,1,.01],coverageOwned,'ratio',stereoHidden);
+  field(c,'peripheralScale','Peripheral resolution','Lower values save GPU outside the focus area.','number',[.15,1,.01],p => foveatedSr(p) || (p.runtime === 'Vdxr' && quad(p)),'ratio',stereoHidden);
   field(c,'quadSharpening','Focus sharpening','Extra sharpening of the focus area.','number',[0,1,.01],quad,'ratio');
   field(c,'quadPeripheryContrast','Periphery contrast','Restores the local contrast the periphery loses when Quad Views enlarges it, so it reads less blurred next to the focus area. Runs at the periphery\u2019s own low resolution: a fraction of a millisecond. 0 turns it off; raise it slowly, too much makes the edges of the periphery shimmer.','number',[0,1,.05],quad,'ratio');
   field(c,'quadSharpenTaper','Sharpening fades at the edge','The focus sharpening fades out over the same band as the focus area, so detail steps down gradually into the periphery and the edge is harder to see. Almost no GPU cost.','toggle',null,quad);
@@ -560,7 +570,7 @@ function buildFields() {
   field(c,'pupilShiftEyeRadiusMm','Eye rotation radius','From the pupil to the point the eye turns around. About 10 to 11 mm for most people; more makes the shift larger.','number',[5,15,.5],pupil,'mm');
   field(c,'pupilShiftVirtualImageM','Lens image distance','How far away the lens shows the image. Pimax does not publish it; 1 to 2 m is typical. It changes only distant objects, by less than 0.1 degree.','number',[.5,5,.1],pupil,'m');
   field(c,'pupilShiftToggleKey','In-flight switch','Turns the correction off and back on in flight, to compare: a low beep off, a high beep on. Click, then press the keys. Default Ctrl+Shift+F10.','hotkey',null,pupil);
-  c = card('headsetControls','Headset runtime','Uses the headset software chosen under How you fly in the right panel (Pimax Play or SteamVR).');
+  c = card('headsetControls','Headset runtime','Uses the headset software chosen under How you fly in the right panel (Virtual Desktop, Pimax Play or SteamVR).');
   more = disclosure(c,'Runtime override','Only for a runtime that is not registered.');
   field(more,'runtimeManifestPath','OpenXR runtime file','An OpenXR runtime JSON to use instead of the route\'s registered runtime. Leave empty normally. Not used with Optimizations only.','path',null,p => !p.desktop);
 }
@@ -779,7 +789,7 @@ function updateControls() {
   fields.forEach(f => { const inactive = Boolean(f.condition && !f.condition(profile)); f.element.classList.toggle('inactive',inactive); f.input.disabled = busy || inactive; if (f.range) f.range.disabled = busy || inactive; f.element.hidden = Boolean(f.hide && f.hide(profile)); });
   // Pimax native exists only on the Pimax route and cannot host the focus adapter DLSS needs.
   const native = $('input-quadViews').querySelector('[value=PimaxNative]'); native.disabled = !nativeAllowed(profile);
-  native.textContent = 'Pimax native Quad Views' + (profile.runtime === 'SboysSteamVr' ? ' · Pimax route only' : native.disabled ? ' · not with DLSS 5' : '');
+  native.textContent = 'Pimax native Quad Views' + (profile.runtime !== 'Pimax' ? ' · Pimax route only' : native.disabled ? ' · not with DLSS 5' : '');
   // Foveated Super Resolution is a stereo option: its card is gone while Quad Views is on.
   $('foveatedDlssControls').hidden = profile.quadViews !== 'None';
   // Stereo Cheeky clamps these ratios to 0.2 or more: say which value is written when the field holds less.
@@ -798,11 +808,14 @@ function updateControls() {
   $('focusBox').style.width = e.w*100+'%'; $('focusBox').style.height = e.h*100+'%'; $('focusBox').hidden = profile.quadViews === 'None' && !owns;
   // Pimax Play's units for Quad Views; fractions of the view for stereo Cheeky without Quad Views.
   const pimaxFound = state?.pimax?.found;
-  $('coverageDetail').textContent = quad(profile) ? (e.pimax ? `Pimax Play ${state.pimax.short}` : `Horizontal FOV ${whole(PIMAX.quickFromShare(profile.foveaWidth))}% · Vertical FOV ${whole(PIMAX.quickFromShare(profile.foveaHeight))}% · Center ${whole(PIMAX.centerFromDensity(profile.quadFocusScale))}% · Peripheral ${whole(PIMAX.peripheralPercent(profile.peripheralScale))}% (Pimax Quick units)`)
+  $('coverageDetail').textContent = profile.runtime === 'Vdxr' && quad(profile) ? `${num(e.w)} × ${num(e.h)} focus · ${num(e.focus)}× focus multiplier · ${num(e.periphery)}× peripheral multiplier` : quad(profile) ? (e.pimax ? `Pimax Play ${state.pimax.short}` : `Horizontal FOV ${whole(PIMAX.quickFromShare(profile.foveaWidth))}% · Vertical FOV ${whole(PIMAX.quickFromShare(profile.foveaHeight))}% · Center ${whole(PIMAX.centerFromDensity(profile.quadFocusScale))}% · Peripheral ${whole(PIMAX.peripheralPercent(profile.peripheralScale))}% (Pimax Quick units)`)
     : owns ? `${Math.round(e.w*100)}% width · ${Math.round(e.h*100)}% height · ${Math.round(e.periphery*100)}% peripheral scale` : profile.quadViews === 'PimaxNative' && pimaxFound ? `Pimax native · Pimax Play ${state.pimax.short}` : 'Coverage is controlled by the selected provider.';
   // Pixels DCS renders for the four views, against normal stereo at the same resolution (before DLSS; overlap counts twice).
   const pixels = quad(profile) ? e.periphery**2 + e.w*e.h*e.focus**2 : null;
   $('coverageNote').textContent = pixels !== null ? `DCS renders about ${Math.round(pixels*100)}% of the pixels of normal stereo rendering (before DLSS upscaling).` : owns ? '' : 'Pimax native and alternative providers set their coverage in their own tools.';
+  $('input-gaze').disabled = busy || profile.runtime === 'Vdxr' || profile.quadViews === 'None';
+  $('input-pupilShift').disabled = busy || profile.runtime === 'Vdxr';
+  $('input-foveaSource').disabled = busy || profile.runtime === 'Vdxr' || !quad(profile);
   renderPimax(); renderFeatures(); renderSavedRuntime();
   // One tile per feature, in pipeline order. Each opens the page that configures it.
   const on = featureState(profile);
@@ -818,7 +831,7 @@ function updateControls() {
   const tile = ([target,label,active,title,detail]) => { if (!active) { title = names[target] || title; detail = String(detail).replace(/^Off · /,''); } return `<button type="button" class="stage ${active ? 'on' : 'off'}" data-page="${target}" aria-label="${escape(title)}: ${active ? 'on' : 'off'}. Open settings"><span>${label}<em>${active ? 'ON' : 'OFF'}</em></span><b>${escape(title)}</b><small>${escape(detail)}</small></button>`; };
   const group = (label, list) => `<div class="stage-group"><div class="stage-group-label">${label}</div><div class="stage-row${list.length === 2 ? ' two' : ''}">${list.map(tile).join('')}</div></div>`;
   const everyone = tiles.filter(([target]) => !VR_PAGES.includes(target)), vr = tiles.filter(([target]) => VR_PAGES.includes(target));
-  $('pipeline').innerHTML = group('For every pilot · monitor or any headset', everyone) + (profile.desktop ? '' : group('VR · ' + (profile.runtime === 'SboysSteamVr' ? 'Sboys' : 'Pimax'), vr));
+  $('pipeline').innerHTML = group('For every pilot · monitor or any headset', everyone) + (profile.desktop ? '' : group('VR · ' + (profile.runtime === 'Vdxr' ? 'Quest 3 · VDXR' : profile.runtime === 'SboysSteamVr' ? 'Sboys' : 'Pimax'), vr));
   // What DLSS 5 still needs, on its own page; everything else to fix is listed once, in Checks.
   const notes = featureNotes(profile);
   $('dlssMissing').innerHTML = notes.dlss.filter(n => n[0] === 'needs').map(() => `<div class="needs"><span>DLSS 5 needs your nvngx_dlssnr.dll runtime file.</span></div>`).join('');
@@ -840,7 +853,7 @@ function updateControls() {
   $('routeLive').classList.toggle('mismatch', !profile.desktop && Boolean(live) && live !== profile.runtime);
   // The VR feature pages are hidden without a headset; an open one goes back to the overview.
   VR_PAGES.forEach(id => $('nav-'+id).hidden = Boolean(profile.desktop));
-  $('panelDevice').textContent = profile.desktop ? 'Any headset, or the monitor' : profile.runtime === 'SboysSteamVr' ? 'Pimax headset · SteamVR (Sboys)' : 'Pimax headset · Pimax Play';
+  $('panelDevice').textContent = profile.desktop ? 'Any headset, or the monitor' : profile.runtime === 'Vdxr' ? 'Quest 3 · Virtual Desktop (VDXR)' : profile.runtime === 'SboysSteamVr' ? 'Pimax headset · SteamVR (Sboys)' : 'Pimax headset · Pimax Play';
   if (profile.desktop && VR_PAGES.includes(page)) navigate('overview');
   // The Sboys driver is only needed on the Sboys route.
   $('sboysCard').hidden = profile.runtime !== 'SboysSteamVr' || Boolean(profile.desktop);
@@ -1028,7 +1041,7 @@ function renderEdits() {
 /** What was detected on this PC (redrawn after a rescan, not on every edit). */
 function renderInventory() {
   const i = state.inventory;
-  const info = [['DCS executable',i.dcsExecutable || 'Not detected'],['Saved Games options',i.optionsPath || 'Not detected'],['Pimax runtime',i.pimaxRuntime || 'Not detected'],['SteamVR runtime',i.steamVrRuntime || 'Not detected'],['Active global runtime',i.activeRuntime || 'Not detected'],['Pimax version',i.pimaxVersion || 'Not detected'],['Pimax Play Quad Views',state.pimax?.found ? state.pimax.summary : 'Settings not found'],['DCS process',i.dcsRunning ? 'Running' : 'Closed'],['DCS rendered FPS cap',i.dcsSettings['graphics.maxFPS'] || 'Not detected'],['DCS desktop VSync',i.dcsSettings['graphics.sync'] || 'Not detected'],['Legacy autoexec cap',i.autoexecMaxFps || (i.autoexecPath ? 'Unknown · review file' : 'No autoexec.cfg detected')],['RTSS processes',(i.limiterProcesses || []).join(', ') || 'Not detected · driver caps still need checking']];
+  const info = [['DCS executable',i.dcsExecutable || 'Not detected'],['Saved Games options',i.optionsPath || 'Not detected'],['Pimax runtime',i.pimaxRuntime || 'Not detected'],['SteamVR runtime',i.steamVrRuntime || 'Not detected'],['VDXR runtime',i.vdxrRuntime || 'Not detected'],['Active global runtime',i.activeRuntime || 'Not detected'],['Pimax version',i.pimaxVersion || 'Not detected'],['Pimax Play Quad Views',state.pimax?.found ? state.pimax.summary : 'Settings not found'],['DCS process',i.dcsRunning ? 'Running' : 'Closed'],['DCS rendered FPS cap',i.dcsSettings['graphics.maxFPS'] || 'Not detected'],['DCS desktop VSync',i.dcsSettings['graphics.sync'] || 'Not detected'],['Legacy autoexec cap',i.autoexecMaxFps || (i.autoexecPath ? 'Unknown · review file' : 'No autoexec.cfg detected')],['RTSS processes',(i.limiterProcesses || []).join(', ') || 'Not detected · driver caps still need checking']];
   $('inventory').innerHTML = info.map(([k,v]) => `<dt>${k}</dt><dd>${escape(v)}</dd>`).join('');
   $('inventoryObservations').innerHTML = i.observations.map(note => `<p>${escape(note)}</p>`).join('');
   $('inventoryFiles').innerHTML = i.files.map(file => `<div class="file"><b>${escape(file.path)}</b><p>${file.exists ? 'Present' : 'Missing'} · ${escape(file.version || 'No version')}<br><span>${escape(file.sha256 || 'No hash captured')}</span></p></div>`).join('') + i.layers.map(layer => `<div class="file"><b>${escape(layer.name || layer.manifestPath)}</b><p>${escape(layer.scope)} · ${layer.enabled ? 'Enabled' : 'Disabled'} · library ${layer.libraryExists ? 'present' : 'missing'}</p><span>${escape(layer.libraryPath)}</span></div>`).join('');
@@ -1145,11 +1158,11 @@ document.addEventListener('click', e => {
   } else {
     if (!profile.desktop && target === profile.runtime) return;
     profile.desktop = false;
-    // Switching route keeps every feature and setting; Pimax native Quad Views becomes the bundled provider on Sboys.
-    if (target !== profile.runtime) { profile.runtime = target; profile.runtimeManifestPath = null; }
+    // Entering Quest loads its baseline; other route switches keep the current quality settings.
+    if (target !== profile.runtime) { if (target === 'Vdxr') questDefaults(profile); else { profile.runtime = target; profile.runtimeManifestPath = null; } }
   }
   resolveFeatures(profile); Object.assign(profile, deriveIdentity(profile));
-  change(); boostChanged();
+  showProfile(); change(); boostChanged();
 });
 let detectedProfile = null;
 $('detectSetup').addEventListener('click', async () => {

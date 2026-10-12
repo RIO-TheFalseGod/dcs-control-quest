@@ -1,3 +1,5 @@
+> Quest 3 fork: [VDXR setup, defaults and first-flight checks](docs/quest3-vdxr.md). The app now offers a dedicated Quest 3 / Virtual Desktop route.
+
 # DCS Control
 
 A free Windows app for DCS World that runs **DLSS 5, frame generation and Quad Views foveated rendering together in VR** (Pimax), set up and launched with one button, and makes DCS run faster for every pilot, on a monitor or any headset.

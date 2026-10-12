@@ -21,7 +21,7 @@ public static class ProfileValidation
     {
         // Optimizations only keeps the VR settings for the next VR flight; VrProfile.ForLaunch is what runs.
         if (profile.FoveatedDlss && profile.QuadViews != QuadProvider.None) profile = profile with { FoveatedDlss = false };
-        if (profile.QuadViews == QuadProvider.PimaxNative && (profile.Runtime == RuntimeKind.SboysSteamVr || profile.UsesCheeky))
+        if (profile.QuadViews == QuadProvider.PimaxNative && (profile.Runtime != RuntimeKind.Pimax || profile.UsesCheeky))
             profile = profile with { QuadViews = QuadProvider.QuadViewsFoveated };
         return profile with { QuadFocusAdapter = profile.UsesCheeky && profile.QuadViews == QuadProvider.QuadViewsFoveated };
     }
@@ -66,7 +66,7 @@ public static class ProfileValidation
         if (!Enum.IsDefined(profile.FpsLimit)) Error("fps-mode", "Select a recognized DCS frame limit.");
         Range("refresh-rate", profile.HeadsetRefreshHz, 50, 240);
         Range("rendered-fps-cap", profile.RenderedFpsCap, 30, 300);
-        if (profile.Runtime == RuntimeKind.SboysSteamVr && profile.QuadViews == QuadProvider.PimaxNative)
+        if (profile.Runtime != RuntimeKind.Pimax && profile.QuadViews == QuadProvider.PimaxNative)
             Error("quad-runtime", "Pimax native Quad Views works only on the Pimax route. Select Bundled Quad Views as the Quad Views provider, or switch the route to Pimax.");
         if (profile.UsesCheeky && profile.QuadViews != QuadProvider.None && !profile.UsesQuadFocus)
             Error("quad-cheeky", "DLSS 5 with Quad Views needs Bundled Quad Views as the Quad Views provider.");
@@ -77,6 +77,14 @@ public static class ProfileValidation
         if (profile.Runtime == RuntimeKind.Pimax && profile.QuadViews == QuadProvider.QuadViewsFoveated)
             issues.Add(new("pimax-native-replaced", IssueSeverity.Info, "Bundled Quad Views replaces the Pimax runtime's own Quad Views for DCS; keep Quad Views on in Pimax Play (the tested setup)." + (PimaxFovea.UsesPimaxPlay(profile)
                 ? "" : " Its focus area comes from this profile; Pimax Play's Quad View settings do not apply.")));
+        if (!profile.Desktop && profile.Runtime == RuntimeKind.Vdxr)
+        {
+            if (profile.Gaze != GazeMode.Fixed) Error("quest-gaze", "Quest 3 uses fixed foveation; it has no eye tracking.");
+            if (profile.PupilShift) Error("quest-pupil", "Turn off pupil shift for Quest 3.");
+            if (profile.FoveaSource != FoveaSource.Profile) Error("quest-focus", "Quest 3 uses this profile's focus values, not Pimax Play.");
+            if (!string.IsNullOrWhiteSpace(profile.RuntimeManifestPath) && !OpenXrRoutes.IsVdxrManifest(profile.RuntimeManifestPath))
+                Error("vdxr-manifest", "Select the 64-bit virtualdesktop-openxr.json for the Quest 3 VDXR route.");
+        }
         if (!Enum.IsDefined(profile.FoveaSource)) Error("fovea-source", "Select Pimax Play or this profile as the focus area source.");
         if (profile.CpuBoost || profile.FreeVram)
         {
@@ -201,6 +209,8 @@ public static class ProfileValidation
                      !File.Exists(Path.Combine(Path.GetDirectoryName(inventory.DcsExecutable) ?? "", "Visualizer.dll")))
                 issues.Add(new("smooth-cursor-images", IssueSeverity.Info, "Smooth mouse cursor: DCS's cursor images (Visualizer.dll) are not next to DCS.exe. Frame generation reads them from the running game, or uses a plain arrow."));
             if (inventory.OptionsPath is null) Error("options-not-found", @"DCS's settings file (Saved Games\DCS\Config\options.lua) was not found." + " If DCS was never started on this PC, start it once to the main menu and close it, then press Rescan this PC; otherwise select the options.lua DCS uses.");
+            if (profile.Runtime == RuntimeKind.Vdxr && !profile.Desktop && OpenXrRoutes.Manifest(profile, inventory) is null)
+                Error("vdxr-not-found", "Virtual Desktop VDXR manifest not found. Install Virtual Desktop Streamer or select its 64-bit runtime JSON.");
             if (profile.Runtime == RuntimeKind.SboysSteamVr && !profile.Desktop && inventory.SteamVrRuntime is null && profile.RuntimeManifestPath is null)
                 Error("steamvr-not-found", "SteamVR OpenXR manifest not found.");
         }

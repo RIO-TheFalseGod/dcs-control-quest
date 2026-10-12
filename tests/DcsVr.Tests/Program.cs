@@ -2158,7 +2158,7 @@ Test("Desktop Tobii pause: only the desktop tracker's services, never the headse
 
 Test("Profiles saved without foveaSource keep their own focus values; new profiles follow Pimax Play", () =>
 {
-    Require(new VrProfile().FoveaSource == FoveaSource.PimaxPlay && ProfilePresets.All.All(p => p.FoveaSource == FoveaSource.PimaxPlay), "New profiles and presets follow Pimax Play");
+    Require(new VrProfile().FoveaSource == FoveaSource.PimaxPlay && ProfilePresets.All.Where(p => p.Runtime != RuntimeKind.Vdxr).All(p => p.FoveaSource == FoveaSource.PimaxPlay), "New profiles and presets follow Pimax Play");
     var node = System.Text.Json.Nodes.JsonNode.Parse(JsonData.Serialize(new VrProfile { QuadViews = QuadProvider.QuadViewsFoveated, FoveaWidth = .44 }))!.AsObject();
     Require(JsonData.Deserialize<VrProfile>(node.ToJsonString()).FoveaSource == FoveaSource.PimaxPlay, "A saved source is kept");
     node.Remove("foveaSource");
@@ -2628,6 +2628,7 @@ Test("Monitor mode: set for the flight only, put back exactly, kept when the use
     Require(ProfileValidation.Validate(new VrProfile { LowerMonitor = true, FlightDisplayWidth = 100 }).Any(i => i.Code == "monitor-mode") && !ProfileValidation.Validate(new VrProfile { LowerMonitor = true }).Any(i => i.Code == "monitor-mode"));
 });
 
+QuestRouteTests.Register(Test, root);
 foreach (var (name, action) in tests)
 {
     try { action(); Console.WriteLine("PASS " + name); }

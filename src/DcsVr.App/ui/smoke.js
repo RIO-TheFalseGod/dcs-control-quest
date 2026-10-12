@@ -14,9 +14,19 @@ window.runWebSmoke = async function() {
     for (const [key] of ui.FEATURES) { const box = $('featureCheck-'+key); if (box.checked !== Boolean(features[key])) { box.checked = Boolean(features[key]); box.dispatchEvent(new Event('change',{bubbles:true})); } }
   }
   try {
+    {
+      const original = structuredClone(ui.profile);
+      document.querySelector('#routeSwitch [data-route=Vdxr]').click();
+      check('Quest route uses fixed Quad Views, 72 Hz and OFXR 2x without DLSS 5',ui.profile.runtime === 'Vdxr' && ui.profile.gaze === 'Fixed' && ui.profile.quadViews === 'QuadViewsFoveated' && ui.profile.frameGenFactor === 2 && ui.profile.headsetRefreshHz === 72 && !ui.profile.neuralRendering && !ui.profile.pupilShift && !ui.profile.runtimeManifestPath);
+      check('Quest controls show direct ratios and disable eye tracking',!$('setting-questFocusScale').hidden && !$('setting-foveaWidth').hidden && $('input-questFocusScale').value === '1.1' && $('input-foveaWidth').value === '0.5' && $('input-gaze').disabled && $('input-pupilShift').disabled && $('sboysCard').hidden);
+      edit('questFocusScale',1.2); check('Quest focus multiplier edits the saved profile',ui.profile.quadFocusScale === 1.2);
+      const planned = ui.withFeatures(original,{route:'Vdxr',features:{quad:true,framegen:true,dlss:false},gaze:'EyeTracked'});
+      check('Guided Quest setup also forces fixed gaze and profile focus',planned.gaze === 'Fixed' && planned.foveaSource === 'Profile' && planned.foveaWidth === .5 && planned.peripheralScale === .4 && planned.frameGenFactor === 2);
+      Object.assign(ui.profile,original); ui.showProfile(); ui.invalidate(); await waitIdle();
+    }
     check('Real WebView2 bridge bootstrap with the feature checklist',document.querySelectorAll('#featureList input[type=checkbox]').length === 5 && !$('profilePreset'));
     check('One primary action: Launch DCS, with Review files, Apply without launching and Back to stock DCS as links',!$('preview') && !$('heroChips') && $('launch').classList.contains('launch') && $('reviewPlan').classList.contains('link-button') && $('apply').classList.contains('link-button') && $('apply').textContent === 'Apply without launching' && $('openRecovery').classList.contains('link-button') && !document.querySelector('.workflow').textContent.match(/Preview|Apply profile/));
-    check('All editable profile controls available',ui.fields.length === 102 && document.querySelectorAll('#routeSwitch [data-route]').length === 3);
+    check('All editable profile controls available',ui.fields.length === 103 && document.querySelectorAll('#routeSwitch [data-route]').length === 4);
     check('Quality presets, self-reported limiters and the unused Sboys folder are gone',!$('tuningPreset') && !$('undoTune') && !$('tuningDialog') && !$('budgets') && !['externalLimiter','externalLimiterFps','runtimeReprojection','sboysDriverDirectory'].some(p => ui.fields.some(f => f.path === p)));
     check('Rarely changed settings start folded away',[...document.querySelectorAll('details.advanced')].length === 5 && [...document.querySelectorAll('details.advanced')].every(d => !d.open) && $('setting-quadViewsLayerDirectory').closest('details') && $('setting-runtimeManifestPath').closest('details') && $('setting-neuralLocalTone').closest('details') && $('setting-diagnosticRecorder').closest('details') && $('setting-engineTimerRefreshUs').closest('details'));
     // Pimax Play's page exactly as Pimax Play shows it (labels, order, rounding), from the fixture's Quick 33 % or Fine 33/10 · 33/33.
